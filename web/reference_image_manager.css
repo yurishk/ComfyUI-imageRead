@@ -1,0 +1,214 @@
+.rim-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  padding: 8px;
+  overflow: hidden;
+  color: #e8edf2;
+  background: #171b20;
+  border: 1px solid #2c333b;
+  border-radius: 6px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.rim-toolbar,
+.rim-path-row,
+.rim-editor,
+.rim-tabs,
+.rim-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rim-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.rim-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rim-btn,
+.rim-tab {
+  height: 26px;
+  padding: 0 8px;
+  color: #dfe8f0;
+  background: #222932;
+  border: 1px solid #3b4652;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.rim-btn:hover,
+.rim-tab:hover {
+  background: #2d3742;
+}
+
+.rim-btn-primary {
+  color: #0d141b;
+  background: #8fd0ff;
+  border-color: #8fd0ff;
+  font-weight: 700;
+}
+
+.rim-btn-danger {
+  color: #ffd9d9;
+  border-color: #704040;
+}
+
+.rim-preview {
+  position: relative;
+  flex: 0 0 180px;
+  min-height: 150px;
+  overflow: hidden;
+  background:
+    linear-gradient(45deg, #20262d 25%, transparent 25%),
+    linear-gradient(-45deg, #20262d 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #20262d 75%),
+    linear-gradient(-45deg, transparent 75%, #20262d 75%);
+  background-color: #11151a;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+  border: 1px solid #323b45;
+  border-radius: 6px;
+}
+
+.rim-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.rim-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 12px;
+  color: #92a0ad;
+  font-size: 12px;
+  text-align: center;
+}
+
+.rim-path-row input,
+.rim-editor input,
+.rim-search {
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  min-width: 0;
+  padding: 0 8px;
+  color: #e8edf2;
+  background: #11151a;
+  border: 1px solid #333d48;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.rim-editor {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.rim-tabs {
+  flex-wrap: wrap;
+}
+
+.rim-tab-active {
+  color: #0d141b;
+  background: #b7dfb0;
+  border-color: #b7dfb0;
+  font-weight: 700;
+}
+
+.rim-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 8px;
+  min-height: 0;
+  padding-right: 2px;
+  overflow: auto;
+}
+
+.rim-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px;
+  background: #20262e;
+  border: 1px solid #303a44;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.rim-card-active {
+  border-color: #8fd0ff;
+  box-shadow: 0 0 0 1px #8fd0ff inset;
+}
+
+.rim-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: #101418;
+  border-radius: 4px;
+}
+
+.rim-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rim-name,
+.rim-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rim-name {
+  color: #edf3f8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.rim-meta {
+  color: #9ba8b4;
+  font-size: 10px;
+}
+
+.rim-star {
+  color: #f3d27a;
+}
+
+.rim-card-actions {
+  justify-content: space-between;
+}
+
+.rim-mini {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+}
+
+.rim-hidden {
+  display: none !important;
+}
