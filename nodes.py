@@ -40,10 +40,11 @@ class ReferenceImageManager:
         "load image",
         "managed image",
     ]
+    DESCRIPTION = "Manage, preview, search, and switch reusable reference images in one node."
 
     def load_image(self, image, managed_images="[]"):
         if not image:
-            raise ValueError("参考图管理器未选择图片。")
+            raise ValueError("No reference image is selected / 参考图管理器未选择图片。")
 
         image_path = folder_paths.get_annotated_filepath(image)
         img = node_helpers.pillow(Image.open, image_path)
@@ -90,7 +91,7 @@ class ReferenceImageManager:
     @classmethod
     def VALIDATE_INPUTS(cls, image, managed_images="[]"):
         if not image:
-            return "参考图管理器未选择图片。"
+            return "No reference image is selected / 参考图管理器未选择图片。"
 
         if not folder_paths.exists_annotated_filepath(image):
             return "Invalid image file: {}".format(image)

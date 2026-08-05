@@ -1,0 +1,13 @@
+{
+  "Reference Image Manager": {
+    "display_name": "参考图管理器",
+    "description": "在一个节点中管理、预览、搜索并切换多张参考图",
+    "inputs": {
+      "image": {"name": "当前图片"},
+      "managed_images": {"name": "管理列表"}
+    },
+    "outputs": {
+      "0": {"name": "图像"}
+    }
+  }
+}

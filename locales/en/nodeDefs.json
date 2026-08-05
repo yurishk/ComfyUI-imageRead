@@ -1,0 +1,13 @@
+{
+  "Reference Image Manager": {
+    "display_name": "Reference Image Manager",
+    "description": "Manage, preview, search, and switch reusable reference images in one node",
+    "inputs": {
+      "image": {"name": "Selected Image"},
+      "managed_images": {"name": "Managed Images"}
+    },
+    "outputs": {
+      "0": {"name": "Image"}
+    }
+  }
+}

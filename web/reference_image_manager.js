@@ -15,7 +15,7 @@ function ensureStyles() {
   const link = document.createElement("link");
   link.id = id;
   link.rel = "stylesheet";
-  link.href = "extensions/ComfyUI-ReferenceImageManager/reference_image_manager.css";
+  link.href = new URL("./reference_image_manager.css", import.meta.url).href;
   document.head.append(link);
 }
 
@@ -172,6 +172,10 @@ function removeWidgetByName(node, name) {
 }
 
 function buildManager(node) {
+  const locale = String(app.ui?.settings?.getSettingValue?.("Comfy.Locale") || navigator.language || "en").toLowerCase();
+  const chinese = locale.startsWith("zh");
+  const tr = (zh, en) => chinese ? zh : en;
+
   node.serialize_widgets = true;
   removeWidgetByName(node, "upload");
   hideWidget(node, "image");
@@ -189,39 +193,39 @@ function buildManager(node) {
   fileInput.multiple = true;
 
   const toolbar = makeEl("div", "rim-toolbar");
-  const title = makeEl("div", "rim-title", "参考图管理");
-  const addBtn = makeEl("button", "rim-btn rim-btn-primary", "添加图片");
-  const replaceBtn = makeEl("button", "rim-btn", "替换当前");
+  const title = makeEl("div", "rim-title", tr("参考图管理", "Reference Images"));
+  const addBtn = makeEl("button", "rim-btn rim-btn-primary", tr("添加图片", "Add Images"));
+  const replaceBtn = makeEl("button", "rim-btn", tr("替换当前", "Replace Current"));
   toolbar.append(title, addBtn, replaceBtn);
 
   const preview = makeEl("div", "rim-preview");
   const previewImg = document.createElement("img");
-  const emptyPreview = makeEl("div", "rim-empty", "先添加图片，然后点击缩略图切换输出。");
+  const emptyPreview = makeEl("div", "rim-empty", tr("先添加图片，然后点击缩略图切换输出。", "Add images, then click a thumbnail to switch the output."));
   preview.append(emptyPreview);
 
   const editor = makeEl("div", "rim-editor");
   const nameInput = document.createElement("input");
-  nameInput.placeholder = "显示名称";
+  nameInput.placeholder = tr("显示名称", "Display Name");
   const pathInput = document.createElement("input");
-  pathInput.placeholder = "原始路径";
+  pathInput.placeholder = tr("原始路径", "Original Path");
   const folderInput = document.createElement("input");
-  folderInput.placeholder = "文件夹";
+  folderInput.placeholder = tr("文件夹", "Folder");
   editor.append(nameInput, pathInput, folderInput);
 
   const controls = makeEl("div", "rim-toolbar");
   const search = document.createElement("input");
   search.className = "rim-search";
-  search.placeholder = "搜索名称 / 路径 / 文件夹";
-  const showAllBtn = makeEl("button", "rim-tab rim-tab-active", "全部");
-  const showFolderBtn = makeEl("button", "rim-tab", "同文件夹");
-  const showStarBtn = makeEl("button", "rim-tab", "收藏");
+  search.placeholder = tr("搜索名称 / 路径 / 文件夹", "Search name / path / folder");
+  const showAllBtn = makeEl("button", "rim-tab rim-tab-active", tr("全部", "All"));
+  const showFolderBtn = makeEl("button", "rim-tab", tr("同文件夹", "Same Folder"));
+  const showStarBtn = makeEl("button", "rim-tab", tr("收藏", "Favorites"));
   controls.append(showAllBtn, showFolderBtn, showStarBtn);
 
   const actions = makeEl("div", "rim-toolbar");
-  const saveMetaBtn = makeEl("button", "rim-btn", "保存信息");
-  const starBtn = makeEl("button", "rim-btn", "收藏");
-  const deleteBtn = makeEl("button", "rim-btn rim-btn-danger", "删除");
-  const clearBtn = makeEl("button", "rim-btn", "清空列表");
+  const saveMetaBtn = makeEl("button", "rim-btn", tr("保存信息", "Save Details"));
+  const starBtn = makeEl("button", "rim-btn", tr("收藏", "Favorite"));
+  const deleteBtn = makeEl("button", "rim-btn rim-btn-danger", tr("删除", "Remove"));
+  const clearBtn = makeEl("button", "rim-btn", tr("清空列表", "Clear List"));
   actions.append(saveMetaBtn, starBtn, deleteBtn, clearBtn);
 
   const list = makeEl("div", "rim-list");
@@ -295,7 +299,7 @@ function buildManager(node) {
     nameInput.value = item?.label || "";
     pathInput.value = item?.original_path || "";
     folderInput.value = item?.folder || "";
-    title.textContent = item ? basename(item.label || item.original_path || item.image) : "参考图管理";
+    title.textContent = item ? basename(item.label || item.original_path || item.image) : tr("参考图管理", "Reference Images");
   }
 
   function renderPreview(item) {
@@ -334,19 +338,21 @@ function buildManager(node) {
 
       const name = makeEl("div", "rim-name", item.label || basename(item.original_path || item.name || item.image));
       const meta = makeEl("div", "rim-meta", item.folder || item.type || "input");
-      const badge = makeEl("div", "rim-meta", item.starred ? "已收藏" : "点击选择");
+      const badge = makeEl("div", "rim-meta", item.starred ? tr("已收藏", "Favorite") : tr("点击选择", "Click to Select"));
       card.append(thumb, name, meta, badge);
       card.onclick = () => selectItem(item);
       list.append(card);
     }
 
     if (!visibleItems.length) {
-      list.append(makeEl("div", "rim-empty", items.length ? "当前筛选没有图片。" : "列表为空。点击“添加图片”创建你的参考图库。"));
+      list.append(makeEl("div", "rim-empty", items.length
+        ? tr("当前筛选没有图片。", "No images match this filter.")
+        : tr("列表为空。点击“添加图片”创建你的参考图库。", "The list is empty. Click Add Images to create your reference library.")));
     }
 
     renderPreview(active);
     renderEditor(active);
-    starBtn.textContent = active?.starred ? "取消收藏" : "收藏";
+    starBtn.textContent = active?.starred ? tr("取消收藏", "Unfavorite") : tr("收藏", "Favorite");
     updateButtons();
   }
 
@@ -410,6 +416,9 @@ function buildManager(node) {
   fileInput.onchange = async () => {
     try {
       await uploadFiles([...fileInput.files]);
+    } catch (error) {
+      console.error("[Reference Image Manager] Upload failed", error);
+      title.textContent = tr("上传失败，请查看控制台。", "Upload failed. Check the console for details.");
     } finally {
       fileInput.value = "";
     }
@@ -454,6 +463,7 @@ function buildManager(node) {
     }
   };
   clearBtn.onclick = () => {
+    if (items.length && !window.confirm(tr("确定清空管理列表吗？缓存图片文件不会被删除。", "Clear the managed list? Cached image files will not be deleted."))) return;
     items = [];
     selectedId = "";
     setWidgetValue(node, "image", "");

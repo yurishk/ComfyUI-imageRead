@@ -9,7 +9,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Reference Image Manager": "参考图管理器",
+    "Reference Image Manager": "Reference Image Manager",
 }
 
 WEB_DIRECTORY = "./web"
