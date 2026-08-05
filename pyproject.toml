@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reference-image-manager"
-version = "1.0.0"
+version = "1.0.1"
 description = "Manage, preview, search, and switch reusable reference images in one ComfyUI node"
 authors = [
   {name = "yurishk"},

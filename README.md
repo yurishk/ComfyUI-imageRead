@@ -1,5 +1,9 @@
 # Reference Image Manager
 
+**English** | [简体中文](#简体中文)
+
+## English
+
 A lightweight ComfyUI node for managing multiple reusable reference images without stacking many Load Image nodes.
 
 ![Reference Image Manager](https://sywb.top/Staticfiles/pic/yscy1.png)
@@ -29,7 +33,9 @@ image/reference -> Reference Image Manager
 
 ---
 
-## 中文说明
+## 简体中文
+
+[English](#english) | **简体中文**
 
 一个轻量的 ComfyUI 自定义节点，用一个节点管理多张参考图，避免堆很多 `Load Image` 节点。
 
