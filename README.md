@@ -1,6 +1,6 @@
 # Reference Image Manager
 
-**English** | [简体中文](#简体中文)
+English | [简体中文](#简体中文)
 
 ## English
 
@@ -35,7 +35,7 @@ image/reference -> Reference Image Manager
 
 ## 简体中文
 
-[English](#english) | **简体中文**
+[English](#english) | 简体中文
 
 一个轻量的 ComfyUI 自定义节点，用一个节点管理多张参考图，避免堆很多 `Load Image` 节点。
 
