@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reference-image-manager"
-version = "1.1.0"
+version = "1.1.1"
 description = "An advanced ComfyUI image loader with managed libraries, efficient folder browsing, image editing, and mask output"
 authors = [
   {name = "yurishk"},

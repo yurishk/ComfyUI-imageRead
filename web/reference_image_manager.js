@@ -543,12 +543,11 @@ function buildManager(node) {
     const nameEl = makeEl("span", "rim-name", name);
     const metaEl = makeEl("span", "rim-meta", edited ? tr("已编辑", "Edited") : meta);
     card.append(thumb, nameEl, metaEl);
-    card.onclick = onSelect;
+    card.onclick = () => onSelect(card);
     return card;
   }
 
-  function renderLibrary() {
-    resetThumbnailQueue();
+  function updateLibrarySelectionControls() {
     const selected = selectedLibraryItem();
     nameInput.value = selected?.label || "";
     originalPathInput.value = selected?.original_path || "";
@@ -559,6 +558,37 @@ function buildManager(node) {
     deleteBtn.disabled = !selected;
     clearBtn.disabled = !state.items.length;
     starBtn.textContent = selected?.starred ? tr("取消收藏", "Unfavorite") : tr("收藏", "Favorite");
+  }
+
+  function updateSelectionDisplay() {
+    const isLibrary = state.mode === "library";
+    const hasSelection = isLibrary ? Boolean(selectedLibraryItem()) : Boolean(state.folderImage);
+    addFolderImageBtn.disabled = !state.folderImage;
+    editBtn.disabled = !hasSelection;
+    copyPathBtn.disabled = !hasSelection;
+    title.textContent = currentSelectionName() || tr("高级加载图像", "Advanced Load Image");
+    status.textContent = isLibrary
+      ? tr(`${state.items.length} 张已管理`, `${state.items.length} managed`)
+      : folderLoading
+        ? tr("正在读取", "Reading")
+        : tr("文件夹模式", "Folder mode");
+    if (isLibrary) updateLibrarySelectionControls();
+    renderPreview();
+  }
+
+  function selectVisibleCard(container, card) {
+    persist();
+    for (const activeCard of container.querySelectorAll(".rim-card-active")) {
+      activeCard.classList.remove("rim-card-active");
+    }
+    card.classList.add("rim-card-active");
+    updateSelectionDisplay();
+    app.graph.setDirtyCanvas(true, true);
+  }
+
+  function renderLibrary() {
+    resetThumbnailQueue();
+    updateLibrarySelectionControls();
 
     showAllBtn.classList.toggle("rim-tab-active", libraryFilter === "all");
     showFolderBtn.classList.toggle("rim-tab-active", libraryFilter === "folder");
@@ -580,9 +610,9 @@ function buildManager(node) {
           url: viewUrlFromRef(item),
           active: item.id === state.selectedId,
           edited: Boolean(item.edited_at),
-          onSelect: () => {
+          onSelect: (card) => {
             state.selectedId = item.id;
-            render(true);
+            selectVisibleCard(libraryList, card);
           },
         }),
       );
@@ -625,9 +655,9 @@ function buildManager(node) {
             url: folderPreviewUrl(item.path, 256),
             active: item.path === state.folderImage,
             edited: Boolean(state.folderState.edits[item.path]),
-            onSelect: () => {
+            onSelect: (card) => {
               state.folderImage = item.path;
-              render(true);
+              selectVisibleCard(folderList, card);
             },
           }),
         );
@@ -662,18 +692,7 @@ function buildManager(node) {
     replaceBtn.hidden = !isLibrary;
     addFolderImageBtn.hidden = isLibrary;
 
-    const hasSelection = isLibrary ? Boolean(selectedLibraryItem()) : Boolean(state.folderImage);
-    addFolderImageBtn.disabled = !state.folderImage;
-    editBtn.disabled = !hasSelection;
-    copyPathBtn.disabled = !hasSelection;
-    title.textContent = currentSelectionName() || tr("高级加载图像", "Advanced Load Image");
-    status.textContent = isLibrary
-      ? tr(`${state.items.length} 张已管理`, `${state.items.length} managed`)
-      : folderLoading
-        ? tr("正在读取", "Reading")
-        : tr("文件夹模式", "Folder mode");
-
-    renderPreview();
+    updateSelectionDisplay();
     if (isLibrary) renderLibrary();
     else renderFolder();
     requestAnimationFrame(() => {
