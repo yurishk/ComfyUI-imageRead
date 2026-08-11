@@ -1,183 +1,308 @@
-.rim-panel {
+.rim-panel,
+.rim-panel * {
   box-sizing: border-box;
+  letter-spacing: 0;
+}
+
+.rim-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  min-width: 320px;
+  min-width: 360px;
   height: 100%;
+  min-height: 560px;
   padding: 8px;
   overflow: hidden;
-  color: #e8edf2;
-  background: #171b20;
-  border: 1px solid #2c333b;
+  color: var(--input-text, #e7ebef);
+  background: var(--comfy-menu-bg, #181a1d);
+  border: 1px solid var(--border-color, #34383e);
   border-radius: 6px;
   font-family: Arial, Helvetica, sans-serif;
 }
 
-.rim-toolbar,
-.rim-path-row,
-.rim-editor,
+.rim-header,
+.rim-action-bar,
+.rim-tools,
 .rim-tabs,
-.rim-card-actions {
+.rim-path-row,
+.rim-footer,
+.rim-details,
+.rim-mode-switch {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.rim-toolbar {
+.rim-header {
   justify-content: space-between;
-  flex-wrap: wrap;
+  min-height: 34px;
 }
 
-.rim-title {
+.rim-heading {
   min-width: 0;
+}
+
+.rim-title,
+.rim-status {
   overflow: hidden;
-  font-size: 12px;
-  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.rim-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rim-status,
+.rim-count {
+  color: var(--descrip-text, #9aa3ad);
+  font-size: 10px;
+}
+
+.rim-mode-switch {
+  flex: 0 0 auto;
+  padding: 2px;
+  background: color-mix(in srgb, var(--comfy-input-bg, #111316) 86%, transparent);
+  border: 1px solid var(--border-color, #34383e);
+  border-radius: 6px;
+}
+
+.rim-mode-btn,
 .rim-btn,
-.rim-tab {
-  height: 26px;
-  padding: 0 8px;
-  color: #dfe8f0;
-  background: #222932;
-  border: 1px solid #3b4652;
+.rim-tab,
+.rim-icon-btn {
+  height: 28px;
+  padding: 0 9px;
+  color: var(--input-text, #e7ebef);
+  background: var(--comfy-input-bg, #23262b);
+  border: 1px solid var(--border-color, #41464e);
   border-radius: 5px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
-.rim-btn:hover,
-.rim-tab:hover {
-  background: #2d3742;
+.rim-mode-btn {
+  height: 24px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.rim-mode-active {
+  color: #101419;
+  background: #a8d5b2;
+  border-color: #a8d5b2;
+  font-weight: 700;
+}
+
+.rim-btn:hover:not(:disabled),
+.rim-tab:hover:not(:disabled),
+.rim-icon-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--comfy-input-bg, #23262b) 72%, #fff 12%);
+}
+
+.rim-btn:disabled,
+.rim-tab:disabled,
+.rim-icon-btn:disabled,
+.rim-mode-btn:disabled {
+  cursor: default;
+  opacity: 0.42;
 }
 
 .rim-btn-primary {
-  color: #0d141b;
-  background: #8fd0ff;
-  border-color: #8fd0ff;
+  color: #101419;
+  background: #8fc8ee;
+  border-color: #8fc8ee;
   font-weight: 700;
 }
 
 .rim-btn-danger {
-  color: #ffd9d9;
-  border-color: #704040;
+  color: #ffdada;
+  border-color: #794747;
+}
+
+.rim-icon-btn {
+  width: 30px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .rim-preview {
   position: relative;
-  flex: 0 0 180px;
-  min-height: 150px;
+  flex: 0 0 190px;
+  min-height: 160px;
   overflow: hidden;
-  background:
-    linear-gradient(45deg, #20262d 25%, transparent 25%),
-    linear-gradient(-45deg, #20262d 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #20262d 75%),
-    linear-gradient(-45deg, transparent 75%, #20262d 75%);
-  background-color: #11151a;
+  background-color: #111418;
+  background-image:
+    linear-gradient(45deg, #252a30 25%, transparent 25%),
+    linear-gradient(-45deg, #252a30 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #252a30 75%),
+    linear-gradient(-45deg, transparent 75%, #252a30 75%);
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
   background-size: 16px 16px;
-  border: 1px solid #323b45;
+  border: 1px solid var(--border-color, #34383e);
   border-radius: 6px;
 }
 
 .rim-preview img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
-  display: block;
 }
 
 .rim-empty {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   height: 100%;
   padding: 12px;
-  color: #92a0ad;
-  font-size: 12px;
+  color: var(--descrip-text, #969fa9);
+  font-size: 11px;
   text-align: center;
 }
 
-.rim-path-row input,
-.rim-editor input,
-.rim-search {
-  box-sizing: border-box;
-  width: 100%;
-  height: 26px;
-  min-width: 0;
-  padding: 0 8px;
-  color: #e8edf2;
-  background: #11151a;
-  border: 1px solid #333d48;
-  border-radius: 5px;
-  font-size: 12px;
-}
-
-.rim-editor {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.rim-tabs {
+.rim-action-bar {
   flex-wrap: wrap;
 }
 
+.rim-view {
+  display: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rim-view-active {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rim-details input,
+.rim-path-row input,
+.rim-search {
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  padding: 0 8px;
+  color: var(--input-text, #e7ebef);
+  background: var(--comfy-input-bg, #111316);
+  border: 1px solid var(--border-color, #3a4048);
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.rim-details input:first-child {
+  flex: 0 1 34%;
+}
+
+.rim-details input:nth-child(2) {
+  flex: 1 1 auto;
+}
+
+.rim-tools {
+  justify-content: space-between;
+}
+
+.rim-tools .rim-search {
+  flex: 1 1 auto;
+}
+
+.rim-tabs {
+  flex: 0 0 auto;
+}
+
+.rim-tab {
+  height: 26px;
+  padding: 0 8px;
+}
+
 .rim-tab-active {
-  color: #0d141b;
-  background: #b7dfb0;
-  border-color: #b7dfb0;
+  color: #101419;
+  background: #b8dcae;
+  border-color: #b8dcae;
   font-weight: 700;
+}
+
+.rim-count {
+  flex: 0 0 auto;
+  min-width: 52px;
+  text-align: right;
 }
 
 .rim-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
-  gap: 8px;
-  min-height: 0;
-  padding-right: 2px;
-  overflow: auto;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  align-content: start;
+  gap: 7px;
+  min-height: 130px;
+  padding: 1px 3px 1px 1px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.rim-list-empty {
+  grid-column: 1 / -1;
+  min-height: 120px;
+}
+
+.rim-error {
+  color: #efaaaa;
 }
 
 .rim-card {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
   padding: 5px;
-  background: #20262e;
-  border: 1px solid #303a44;
+  color: inherit;
+  text-align: left;
+  background: color-mix(in srgb, var(--comfy-input-bg, #22262b) 88%, #fff 2%);
+  border: 1px solid var(--border-color, #343a42);
   border-radius: 6px;
   cursor: pointer;
 }
 
+.rim-card:hover {
+  border-color: #75818d;
+}
+
 .rim-card-active {
-  border-color: #8fd0ff;
-  box-shadow: 0 0 0 1px #8fd0ff inset;
+  border-color: #82c7ee;
+  box-shadow: 0 0 0 1px #82c7ee inset;
 }
 
 .rim-thumb {
+  display: block;
   width: 100%;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  background: #101418;
+  background: #101317;
   border-radius: 4px;
 }
 
 .rim-thumb img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
+}
+
+.rim-image-error {
+  opacity: 0.2;
 }
 
 .rim-name,
 .rim-meta {
+  display: block;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -185,30 +310,55 @@
 }
 
 .rim-name {
-  color: #edf3f8;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
 }
 
 .rim-meta {
-  color: #9ba8b4;
+  color: var(--descrip-text, #929ca6);
+  font-size: 9px;
+}
+
+.rim-footer {
+  min-height: 30px;
+}
+
+.rim-footer-spacer {
+  flex: 1 1 auto;
+}
+
+.rim-page-text {
+  min-width: 72px;
+  color: var(--descrip-text, #9aa3ad);
   font-size: 10px;
+  text-align: center;
 }
 
-.rim-star {
-  color: #f3d27a;
-}
-
-.rim-card-actions {
-  justify-content: space-between;
-}
-
-.rim-mini {
-  width: 24px;
-  height: 22px;
-  padding: 0;
-}
-
-.rim-hidden {
+.rim-hidden,
+.rim-btn[hidden] {
   display: none !important;
+}
+
+@media (max-width: 520px) {
+  .rim-header,
+  .rim-details,
+  .rim-path-row,
+  .rim-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rim-mode-switch,
+  .rim-tabs {
+    align-self: stretch;
+  }
+
+  .rim-mode-btn,
+  .rim-tab {
+    flex: 1 1 0;
+  }
+
+  .rim-details input:first-child {
+    flex-basis: auto;
+  }
 }

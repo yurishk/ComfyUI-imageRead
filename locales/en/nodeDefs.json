@@ -1,13 +1,18 @@
 {
   "Reference Image Manager": {
-    "display_name": "Reference Image Manager",
-    "description": "Manage, preview, search, and switch reusable reference images in one node",
+    "display_name": "Advanced Load Image",
+    "description": "Manage reusable images or browse a local folder efficiently, with image and mask outputs",
     "inputs": {
       "image": {"name": "Selected Image"},
-      "managed_images": {"name": "Managed Images"}
+      "managed_images": {"name": "Library Data"},
+      "source_mode": {"name": "Source Mode"},
+      "folder_path": {"name": "Folder Path"},
+      "folder_image": {"name": "Folder Image"},
+      "folder_state": {"name": "Browser State"}
     },
     "outputs": {
-      "0": {"name": "Image"}
+      "0": {"name": "Image"},
+      "1": {"name": "Mask"}
     }
   }
 }

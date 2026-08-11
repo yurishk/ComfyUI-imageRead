@@ -1,13 +1,18 @@
 {
   "Reference Image Manager": {
-    "display_name": "参考图管理器",
-    "description": "在一个节点中管理、预览、搜索并切换多张参考图",
+    "display_name": "高级加载图像",
+    "description": "管理常用图片或高效浏览本地文件夹，并输出图像与掩码",
     "inputs": {
       "image": {"name": "当前图片"},
-      "managed_images": {"name": "管理列表"}
+      "managed_images": {"name": "图库数据"},
+      "source_mode": {"name": "读取方式"},
+      "folder_path": {"name": "文件夹路径"},
+      "folder_image": {"name": "文件夹图片"},
+      "folder_state": {"name": "浏览状态"}
     },
     "outputs": {
-      "0": {"name": "图像"}
+      "0": {"name": "图像"},
+      "1": {"name": "掩码"}
     }
   }
 }

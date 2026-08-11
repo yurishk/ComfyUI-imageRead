@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reference-image-manager"
-version = "1.0.2"
-description = "Manage, preview, search, and switch reusable reference images in one ComfyUI node"
+version = "1.1.0"
+description = "An advanced ComfyUI image loader with managed libraries, efficient folder browsing, image editing, and mask output"
 authors = [
   {name = "yurishk"},
 ]
@@ -26,5 +26,5 @@ Repository = "https://github.com/yurishk/ComfyUI-imageRead"
 
 [tool.comfy]
 PublisherId = "yurishk"
-DisplayName = "Reference Image Manager"
+DisplayName = "Advanced Image Loader"
 Icon = "https://sywb.top/Staticfiles/pic/ReferenceImageManager-preview.png"
