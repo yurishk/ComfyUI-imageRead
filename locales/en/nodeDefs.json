@@ -1,7 +1,7 @@
 {
   "Reference Image Manager": {
     "display_name": "Advanced Load Image",
-    "description": "Manage reusable images or browse a local folder efficiently, with image and mask outputs",
+    "description": "Manage reusable images or browse and recursively scan local folders efficiently, with image and mask outputs",
     "inputs": {
       "image": {"name": "Selected Image"},
       "managed_images": {"name": "Library Data"},

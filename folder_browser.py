@@ -6,7 +6,7 @@ import os
 import re
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,6 +34,24 @@ IMAGE_EXTENSIONS = frozenset(
 DEFAULT_PAGE_SIZE = 48
 MAX_PAGE_SIZE = 96
 MAX_INDEX_ITEMS = 100_000
+MAX_SCANNED_DIRECTORIES = 5_000
+MAX_CHILD_FOLDERS = 500
+MAX_SCAN_SECONDS = 3.0
+DEFAULT_RECURSIVE_DEPTH = 8
+MAX_RECURSIVE_DEPTH = 32
+SORT_OPTIONS = frozenset(
+    {
+        "name_asc",
+        "name_desc",
+        "path_asc",
+        "path_desc",
+        "modified_desc",
+        "modified_asc",
+        "size_desc",
+        "size_asc",
+        "type_asc",
+    }
+)
 
 
 def _natural_key(value: str) -> tuple[object, ...]:
@@ -81,51 +99,166 @@ def resolve_image_path(path: str, root: str | None = None) -> str:
 
 
 @dataclass(frozen=True)
+class ImageEntry:
+    name: str
+    relative_path: str
+    size: int
+    modified_ns: int
+
+
+@dataclass(frozen=True)
+class ChildFolder:
+    name: str
+    path: str
+
+
+@dataclass(frozen=True)
 class DirectoryIndex:
     created_at: float
-    items: tuple[str, ...]
-    truncated: bool
+    items: tuple[ImageEntry, ...]
+    folders: tuple[ChildFolder, ...]
+    folders_truncated: bool
+    scanned_directories: int
+    scan_seconds: float
+    limit_reasons: tuple[str, ...]
 
 
 class DirectoryIndexCache:
-    """Caches filename-only directory scans so page changes never touch the disk."""
+    """Caches bounded directory scans so paging and sorting stay memory-only."""
 
-    def __init__(self, ttl_seconds: float = 120.0, max_directories: int = 12):
+    def __init__(
+        self,
+        ttl_seconds: float = 120.0,
+        max_directories: int = 12,
+        max_items: int = MAX_INDEX_ITEMS,
+        max_scanned_directories: int = MAX_SCANNED_DIRECTORIES,
+        max_child_folders: int = MAX_CHILD_FOLDERS,
+        max_scan_seconds: float = MAX_SCAN_SECONDS,
+        max_views: int = 32,
+    ):
         self.ttl_seconds = ttl_seconds
         self.max_directories = max_directories
-        self._entries: OrderedDict[str, DirectoryIndex] = OrderedDict()
+        self.max_items = max_items
+        self.max_scanned_directories = max_scanned_directories
+        self.max_child_folders = max_child_folders
+        self.max_scan_seconds = max_scan_seconds
+        self.max_views = max_views
+        self._entries: OrderedDict[tuple[str, bool, int], DirectoryIndex] = (
+            OrderedDict()
+        )
+        self._views: OrderedDict[
+            tuple[str, bool, int, float, str, str], tuple[ImageEntry, ...]
+        ] = OrderedDict()
         self._lock = threading.RLock()
 
     def clear(self, folder: str | None = None) -> None:
         with self._lock:
             if folder is None:
                 self._entries.clear()
+                self._views.clear()
                 return
-            self._entries.pop(os.path.normcase(os.path.abspath(folder)), None)
+            normalized = os.path.normcase(os.path.abspath(folder))
+            for key in tuple(self._entries):
+                if key[0] == normalized:
+                    self._entries.pop(key, None)
+            for key in tuple(self._views):
+                if key[0] == normalized:
+                    self._views.pop(key, None)
 
-    def _scan(self, folder: str) -> DirectoryIndex:
-        names: list[str] = []
-        truncated = False
-        with os.scandir(folder) as entries:
-            for entry in entries:
-                if len(names) >= MAX_INDEX_ITEMS:
-                    truncated = True
-                    break
-                if not is_supported_image(entry.name):
-                    continue
-                try:
-                    if not entry.is_file(follow_symlinks=False):
+    def _scan(self, folder: str, recursive: bool, max_depth: int) -> DirectoryIndex:
+        started_at = time.monotonic()
+        images: list[ImageEntry] = []
+        child_folders: list[ChildFolder] = []
+        folders_truncated = False
+        scanned_directories = 0
+        reasons: set[str] = set()
+        pending: deque[tuple[str, str, int]] = deque([(folder, "", 0)])
+        stop = False
+
+        while pending and not stop:
+            if time.monotonic() - started_at >= self.max_scan_seconds:
+                reasons.add("time_limit")
+                break
+            if scanned_directories >= self.max_scanned_directories:
+                reasons.add("directory_limit")
+                break
+
+            current, relative_folder, depth = pending.popleft()
+            scanned_directories += 1
+            try:
+                entries = os.scandir(current)
+            except OSError:
+                if depth == 0:
+                    raise
+                reasons.add("unreadable_folders")
+                continue
+
+            with entries:
+                for position, entry in enumerate(entries):
+                    if position % 64 == 0 and time.monotonic() - started_at >= self.max_scan_seconds:
+                        reasons.add("time_limit")
+                        stop = True
+                        break
+
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            if depth == 0:
+                                if len(child_folders) < self.max_child_folders:
+                                    child_folders.append(ChildFolder(entry.name, entry.path))
+                                else:
+                                    folders_truncated = True
+                            if recursive:
+                                if depth < max_depth:
+                                    if len(pending) + scanned_directories < self.max_scanned_directories:
+                                        child_relative = os.path.join(relative_folder, entry.name)
+                                        pending.append((entry.path, child_relative, depth + 1))
+                                    else:
+                                        reasons.add("directory_limit")
+                                else:
+                                    reasons.add("depth_limit")
+                            continue
+                        if not is_supported_image(entry.name) or not entry.is_file(
+                            follow_symlinks=False
+                        ):
+                            continue
+                        stat = entry.stat(follow_symlinks=False)
+                    except OSError:
                         continue
-                except OSError:
-                    continue
-                names.append(entry.name)
 
-        names.sort(key=_natural_key)
-        return DirectoryIndex(time.monotonic(), tuple(names), truncated)
+                    if len(images) >= self.max_items:
+                        reasons.add("image_limit")
+                        stop = True
+                        break
+                    images.append(
+                        ImageEntry(
+                            name=entry.name,
+                            relative_path=os.path.join(relative_folder, entry.name),
+                            size=stat.st_size,
+                            modified_ns=stat.st_mtime_ns,
+                        )
+                    )
 
-    def get_index(self, folder: str, refresh: bool = False) -> tuple[str, DirectoryIndex]:
+        child_folders.sort(key=lambda item: _natural_key(item.name))
+        return DirectoryIndex(
+            created_at=time.monotonic(),
+            items=tuple(images),
+            folders=tuple(child_folders),
+            folders_truncated=folders_truncated,
+            scanned_directories=scanned_directories,
+            scan_seconds=round(time.monotonic() - started_at, 3),
+            limit_reasons=tuple(sorted(reasons)),
+        )
+
+    def get_index(
+        self,
+        folder: str,
+        recursive: bool = False,
+        max_depth: int = DEFAULT_RECURSIVE_DEPTH,
+        refresh: bool = False,
+    ) -> tuple[str, DirectoryIndex, bool]:
         normalized = normalize_folder(folder)
-        cache_key = os.path.normcase(normalized)
+        max_depth = max(1, min(int(max_depth), MAX_RECURSIVE_DEPTH))
+        cache_key = (os.path.normcase(normalized), bool(recursive), max_depth)
         now = time.monotonic()
 
         with self._lock:
@@ -136,15 +269,42 @@ class DirectoryIndexCache:
                 and now - cached.created_at <= self.ttl_seconds
             ):
                 self._entries.move_to_end(cache_key)
-                return normalized, cached
+                return normalized, cached, True
 
-        scanned = self._scan(normalized)
+        scanned = self._scan(normalized, bool(recursive), max_depth)
         with self._lock:
+            for view_key in tuple(self._views):
+                if view_key[:3] == cache_key:
+                    self._views.pop(view_key, None)
             self._entries[cache_key] = scanned
             self._entries.move_to_end(cache_key)
             while len(self._entries) > self.max_directories:
                 self._entries.popitem(last=False)
-        return normalized, scanned
+        return normalized, scanned, False
+
+    @staticmethod
+    def _sort_items(items: tuple[ImageEntry, ...], sort_by: str) -> list[ImageEntry]:
+        sort_by = sort_by if sort_by in SORT_OPTIONS else "name_asc"
+        if sort_by == "name_desc":
+            return sorted(items, key=lambda item: _natural_key(item.name), reverse=True)
+        if sort_by == "path_asc":
+            return sorted(items, key=lambda item: _natural_key(item.relative_path))
+        if sort_by == "path_desc":
+            return sorted(items, key=lambda item: _natural_key(item.relative_path), reverse=True)
+        if sort_by == "modified_desc":
+            return sorted(items, key=lambda item: (item.modified_ns, _natural_key(item.relative_path)), reverse=True)
+        if sort_by == "modified_asc":
+            return sorted(items, key=lambda item: (item.modified_ns, _natural_key(item.relative_path)))
+        if sort_by == "size_desc":
+            return sorted(items, key=lambda item: (item.size, _natural_key(item.relative_path)), reverse=True)
+        if sort_by == "size_asc":
+            return sorted(items, key=lambda item: (item.size, _natural_key(item.relative_path)))
+        if sort_by == "type_asc":
+            return sorted(
+                items,
+                key=lambda item: (Path(item.name).suffix.casefold(), _natural_key(item.relative_path)),
+            )
+        return sorted(items, key=lambda item: _natural_key(item.name))
 
     def list_page(
         self,
@@ -152,40 +312,87 @@ class DirectoryIndexCache:
         page: int = 0,
         page_size: int = DEFAULT_PAGE_SIZE,
         query: str = "",
+        recursive: bool = False,
+        max_depth: int = DEFAULT_RECURSIVE_DEPTH,
+        sort_by: str = "name_asc",
         refresh: bool = False,
     ) -> dict[str, object]:
-        normalized, index = self.get_index(folder, refresh=refresh)
+        normalized, index, cached = self.get_index(
+            folder,
+            recursive=recursive,
+            max_depth=max_depth,
+            refresh=refresh,
+        )
         page_size = max(1, min(int(page_size), MAX_PAGE_SIZE))
         query_folded = str(query or "").strip().casefold()
+        sort_by = sort_by if sort_by in SORT_OPTIONS else "name_asc"
 
-        if query_folded:
-            names = tuple(name for name in index.items if query_folded in name.casefold())
-        else:
-            names = index.items
+        max_depth = max(1, min(int(max_depth), MAX_RECURSIVE_DEPTH))
+        view_key = (
+            os.path.normcase(normalized),
+            bool(recursive),
+            max_depth,
+            index.created_at,
+            query_folded,
+            sort_by,
+        )
+        with self._lock:
+            sorted_entries = self._views.get(view_key)
+            if sorted_entries is not None:
+                self._views.move_to_end(view_key)
 
-        total = len(names)
+        if sorted_entries is None:
+            if query_folded:
+                entries = tuple(
+                    item
+                    for item in index.items
+                    if query_folded in item.relative_path.casefold()
+                )
+            else:
+                entries = index.items
+            sorted_entries = tuple(self._sort_items(entries, sort_by))
+            with self._lock:
+                self._views[view_key] = sorted_entries
+                self._views.move_to_end(view_key)
+                while len(self._views) > self.max_views:
+                    self._views.popitem(last=False)
+
+        total = len(sorted_entries)
         page_count = max(1, (total + page_size - 1) // page_size)
         page = max(0, min(int(page), page_count - 1))
         start = page * page_size
-        selected_names = names[start : start + page_size]
+        selected_entries = sorted_entries[start : start + page_size]
         items = [
             {
-                "name": name,
-                "path": os.path.join(normalized, name),
-                "relative_path": name,
+                "name": item.name,
+                "path": os.path.join(normalized, item.relative_path),
+                "relative_path": item.relative_path,
+                "size": item.size,
+                "modified": item.modified_ns // 1_000_000,
             }
-            for name in selected_names
+            for item in selected_entries
         ]
 
         return {
             "folder": normalized,
+            "parent_folder": os.path.dirname(normalized),
+            "folders": [
+                {"name": item.name, "path": item.path} for item in index.folders
+            ],
+            "folders_truncated": index.folders_truncated,
             "items": items,
             "page": page,
             "page_size": page_size,
             "page_count": page_count,
             "total": total,
-            "truncated": index.truncated,
-            "cached": not refresh,
+            "recursive": bool(recursive),
+            "max_depth": max_depth,
+            "sort_by": sort_by,
+            "truncated": bool(index.limit_reasons),
+            "limit_reasons": list(index.limit_reasons),
+            "scanned_directories": index.scanned_directories,
+            "scan_seconds": index.scan_seconds,
+            "cached": cached,
         }
 
 
@@ -247,4 +454,3 @@ class ThumbnailCache:
                 _, removed = self._entries.popitem(last=False)
                 self._bytes -= len(removed[0])
         return value
-

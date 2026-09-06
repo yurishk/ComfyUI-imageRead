@@ -140,6 +140,9 @@ def register_routes() -> None:
                 payload.get("page", 0),
                 payload.get("page_size", 48),
                 payload.get("query", ""),
+                bool(payload.get("recursive", False)),
+                payload.get("max_depth", 8),
+                payload.get("sort_by", "name_asc"),
                 bool(payload.get("refresh", False)),
             )
             return web.json_response(result)

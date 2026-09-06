@@ -26,9 +26,12 @@
 .rim-tools,
 .rim-tabs,
 .rim-path-row,
+.rim-folder-options,
+.rim-folder-navigation,
 .rim-footer,
 .rim-details,
-.rim-mode-switch {
+.rim-mode-switch,
+.rim-scope-switch {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -61,12 +64,43 @@
   font-size: 10px;
 }
 
-.rim-mode-switch {
+.rim-mode-switch,
+.rim-scope-switch {
   flex: 0 0 auto;
   padding: 2px;
   background: color-mix(in srgb, var(--comfy-input-bg, #111316) 86%, transparent);
   border: 1px solid var(--border-color, #34383e);
   border-radius: 6px;
+}
+
+.rim-folder-options {
+  min-height: 30px;
+}
+
+.rim-folder-options .rim-sort-select {
+  flex: 1 1 auto;
+}
+
+.rim-folder-navigation {
+  min-height: 28px;
+}
+
+.rim-child-folder-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rim-folder-status,
+.rim-scan-text {
+  overflow: hidden;
+  color: var(--descrip-text, #9aa3ad);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rim-scan-warning {
+  color: #edc47a;
 }
 
 .rim-mode-btn,
@@ -185,7 +219,8 @@
 
 .rim-details input,
 .rim-path-row input,
-.rim-search {
+.rim-search,
+.rim-select {
   width: 100%;
   height: 28px;
   min-width: 0;
@@ -195,6 +230,19 @@
   border: 1px solid var(--border-color, #3a4048);
   border-radius: 5px;
   font-size: 11px;
+}
+
+.rim-select {
+  width: auto;
+  padding-right: 24px;
+}
+
+.rim-depth-select {
+  flex: 0 0 92px;
+}
+
+.rim-sort-select {
+  min-width: 132px;
 }
 
 .rim-details input:first-child {
@@ -343,13 +391,16 @@
   .rim-header,
   .rim-details,
   .rim-path-row,
-  .rim-tools {
+  .rim-tools,
+  .rim-folder-options,
+  .rim-folder-navigation {
     align-items: stretch;
     flex-direction: column;
   }
 
   .rim-mode-switch,
-  .rim-tabs {
+  .rim-tabs,
+  .rim-scope-switch {
     align-self: stretch;
   }
 
@@ -359,6 +410,13 @@
   }
 
   .rim-details input:first-child {
+    flex-basis: auto;
+  }
+
+  .rim-select,
+  .rim-depth-select,
+  .rim-sort-select {
+    width: 100%;
     flex-basis: auto;
   }
 }

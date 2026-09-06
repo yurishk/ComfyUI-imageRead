@@ -16,6 +16,18 @@ const LIBRARY_PAGE_SIZE = 48;
 const FOLDER_PAGE_SIZE = 48;
 const MAX_FOLDER_EDITS = 50;
 const ROUTE_PREFIX = "/advanced-image-loader";
+const RECURSIVE_DEPTHS = [4, 8, 16, 32];
+const FOLDER_SORT_OPTIONS = new Set([
+  "name_asc",
+  "name_desc",
+  "path_asc",
+  "path_desc",
+  "modified_desc",
+  "modified_asc",
+  "size_desc",
+  "size_asc",
+  "type_asc",
+]);
 
 function ensureStyles() {
   const id = "advanced-image-loader-css";
@@ -55,6 +67,29 @@ function dirname(path) {
   parts.pop();
   if (/^[A-Za-z]:/.test(value) && parts.length === 1) return `${parts[0]}${separator}`;
   return parts.join(separator);
+}
+
+function formatBytes(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size >= 10 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
+}
+
+function formatDate(value) {
+  const date = new Date(Number(value) || 0);
+  if (!Number.isFinite(date.getTime()) || date.getTime() <= 0) return "";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 function isAbsolutePath(path) {
@@ -148,9 +183,16 @@ function cleanItems(value) {
 function cleanFolderState(value) {
   const parsed = typeof value === "string" ? parseJson(value, {}) : value || {};
   const edits = parsed.edits && typeof parsed.edits === "object" ? parsed.edits : {};
+  const requestedDepth = Number.parseInt(parsed.maxDepth, 10) || 8;
+  const maxDepth = RECURSIVE_DEPTHS.reduce((closest, depth) =>
+    Math.abs(depth - requestedDepth) < Math.abs(closest - requestedDepth) ? depth : closest,
+  );
   return {
     page: Math.max(0, Number.parseInt(parsed.page, 10) || 0),
     query: String(parsed.query || ""),
+    recursive: Boolean(parsed.recursive),
+    maxDepth,
+    sortBy: FOLDER_SORT_OPTIONS.has(parsed.sortBy) ? parsed.sortBy : "name_asc",
     edits: { ...edits },
   };
 }
@@ -338,13 +380,70 @@ function buildManager(node) {
 
   const folderView = makeEl("div", "rim-view rim-folder-view");
   const pathRow = makeEl("div", "rim-path-row");
+  const parentFolderBtn = makeEl("button", "rim-icon-btn", "↑");
+  parentFolderBtn.title = tr("打开上一级文件夹", "Open parent folder");
   const folderPathInput = document.createElement("input");
   folderPathInput.placeholder = tr("输入或选择图片文件夹", "Enter or choose an image folder");
   const applyPathBtn = makeEl("button", "rim-btn", tr("打开", "Open"));
   const chooseFolderBtn = makeEl("button", "rim-btn rim-btn-primary", tr("选择文件夹", "Choose Folder"));
   const refreshFolderBtn = makeEl("button", "rim-icon-btn", "↻");
   refreshFolderBtn.title = tr("刷新文件夹", "Refresh folder");
-  pathRow.append(folderPathInput, applyPathBtn, chooseFolderBtn, refreshFolderBtn);
+  pathRow.append(
+    parentFolderBtn,
+    folderPathInput,
+    applyPathBtn,
+    chooseFolderBtn,
+    refreshFolderBtn,
+  );
+
+  const folderOptions = makeEl("div", "rim-folder-options");
+  const folderScopeSwitch = makeEl("div", "rim-scope-switch");
+  const currentFolderBtn = makeEl("button", "rim-mode-btn", tr("当前目录", "Current"));
+  const recursiveFolderBtn = makeEl(
+    "button",
+    "rim-mode-btn",
+    tr("包含子目录", "Recursive"),
+  );
+  folderScopeSwitch.append(currentFolderBtn, recursiveFolderBtn);
+
+  const depthSelect = document.createElement("select");
+  depthSelect.className = "rim-select rim-depth-select";
+  depthSelect.title = tr("最大递归深度", "Maximum recursive depth");
+  for (const depth of RECURSIVE_DEPTHS) {
+    const option = document.createElement("option");
+    option.value = String(depth);
+    option.textContent = tr(`深度 ${depth} 层`, `Depth ${depth}`);
+    depthSelect.append(option);
+  }
+
+  const sortSelect = document.createElement("select");
+  sortSelect.className = "rim-select rim-sort-select";
+  sortSelect.title = tr("图片排序", "Image sorting");
+  const sortOptions = [
+    ["name_asc", tr("名称：自然顺序", "Name: Natural")],
+    ["name_desc", tr("名称：倒序", "Name: Reverse")],
+    ["path_asc", tr("路径：自然顺序", "Path: Natural")],
+    ["path_desc", tr("路径：倒序", "Path: Reverse")],
+    ["modified_desc", tr("修改时间：最新", "Modified: Newest")],
+    ["modified_asc", tr("修改时间：最早", "Modified: Oldest")],
+    ["size_desc", tr("文件大小：最大", "Size: Largest")],
+    ["size_asc", tr("文件大小：最小", "Size: Smallest")],
+    ["type_asc", tr("文件格式", "File Type")],
+  ];
+  for (const [value, label] of sortOptions) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    sortSelect.append(option);
+  }
+  folderOptions.append(folderScopeSwitch, depthSelect, sortSelect);
+
+  const folderNavigation = makeEl("div", "rim-folder-navigation");
+  const childFolderSelect = document.createElement("select");
+  childFolderSelect.className = "rim-select rim-child-folder-select";
+  childFolderSelect.title = tr("打开子文件夹", "Open a child folder");
+  const childFolderStatus = makeEl("span", "rim-folder-status", "");
+  folderNavigation.append(childFolderSelect, childFolderStatus);
 
   const folderTools = makeEl("div", "rim-tools");
   const folderSearch = document.createElement("input");
@@ -360,8 +459,22 @@ function buildManager(node) {
   const folderPageText = makeEl("span", "rim-page-text", "");
   const folderNextBtn = makeEl("button", "rim-icon-btn", "›");
   folderNextBtn.title = tr("下一页", "Next page");
-  folderFooter.append(folderPrevBtn, folderPageText, folderNextBtn);
-  folderView.append(pathRow, folderTools, folderList, folderFooter);
+  const folderScanText = makeEl("span", "rim-scan-text", "");
+  folderFooter.append(
+    folderPrevBtn,
+    folderPageText,
+    folderNextBtn,
+    makeEl("span", "rim-footer-spacer"),
+    folderScanText,
+  );
+  folderView.append(
+    pathRow,
+    folderOptions,
+    folderNavigation,
+    folderTools,
+    folderList,
+    folderFooter,
+  );
 
   const fileInput = makeEl("input", "rim-hidden");
   fileInput.type = "file";
@@ -534,8 +647,9 @@ function buildManager(node) {
     thumbObserver?.observe(image);
   }
 
-  function makeCard({ name, meta, url, active, edited, onSelect }) {
+  function makeCard({ name, meta, url, active, edited, tooltip, onSelect }) {
     const card = makeEl("button", `rim-card${active ? " rim-card-active" : ""}`);
+    card.title = tooltip || name;
     const thumb = makeEl("span", "rim-thumb");
     const image = document.createElement("img");
     observeThumbnail(image, url);
@@ -545,6 +659,35 @@ function buildManager(node) {
     card.append(thumb, nameEl, metaEl);
     card.onclick = () => onSelect(card);
     return card;
+  }
+
+  function folderItemMeta(item) {
+    const relativeFolder = dirname(item.relative_path);
+    const location = relativeFolder || tr("当前目录", "Current folder");
+    if (state.folderState.sortBy.startsWith("modified_")) {
+      return `${formatDate(item.modified)} · ${location}`;
+    }
+    if (state.folderState.sortBy.startsWith("size_")) {
+      return `${formatBytes(item.size)} · ${location}`;
+    }
+    if (state.folderState.sortBy === "type_asc") {
+      const extension = item.name.includes(".") ? item.name.split(".").pop().toUpperCase() : "";
+      return `${extension || tr("未知格式", "Unknown type")} · ${location}`;
+    }
+    return state.folderState.recursive ? location : formatBytes(item.size);
+  }
+
+  function scanLimitText(reasons) {
+    const labels = {
+      time_limit: tr("时间上限", "time limit"),
+      directory_limit: tr("目录数量上限", "folder limit"),
+      image_limit: tr("图片数量上限", "image limit"),
+      depth_limit: tr("深度上限", "depth limit"),
+      unreadable_folders: tr("部分目录不可读", "unreadable folders"),
+    };
+    return (reasons || [])
+      .map((reason) => labels[reason] || reason)
+      .join(chinese ? "、" : ", ");
   }
 
   function updateLibrarySelectionControls() {
@@ -637,6 +780,33 @@ function buildManager(node) {
     resetThumbnailQueue();
     folderPathInput.value = state.folderPath;
     if (folderSearch.value !== state.folderState.query) folderSearch.value = state.folderState.query;
+    currentFolderBtn.classList.toggle("rim-mode-active", !state.folderState.recursive);
+    recursiveFolderBtn.classList.toggle("rim-mode-active", state.folderState.recursive);
+    depthSelect.disabled = !state.folderState.recursive || folderLoading;
+    depthSelect.value = String(state.folderState.maxDepth);
+    sortSelect.value = state.folderState.sortBy;
+
+    const parentFolder = folderResponse?.parent_folder || "";
+    parentFolderBtn.disabled = folderLoading || !parentFolder || parentFolder === state.folderPath;
+    childFolderSelect.replaceChildren();
+    const folders = folderResponse?.folders || [];
+    const folderPlaceholder = document.createElement("option");
+    folderPlaceholder.value = "";
+    folderPlaceholder.textContent = folders.length
+      ? tr(`打开子文件夹（${folders.length}）`, `Open child folder (${folders.length})`)
+      : tr("没有子文件夹", "No child folders");
+    childFolderSelect.append(folderPlaceholder);
+    for (const folder of folders) {
+      const option = document.createElement("option");
+      option.value = folder.path;
+      option.textContent = folder.name;
+      childFolderSelect.append(option);
+    }
+    childFolderSelect.value = "";
+    childFolderSelect.disabled = folderLoading || !folders.length;
+    childFolderStatus.textContent = folderResponse?.folders_truncated
+      ? tr("仅显示前 500 个子文件夹", "Showing the first 500 child folders")
+      : "";
     folderList.replaceChildren();
 
     if (folderLoading) {
@@ -651,10 +821,11 @@ function buildManager(node) {
         folderList.append(
           makeCard({
             name: item.name,
-            meta: tr("文件夹图片", "Folder image"),
+            meta: folderItemMeta(item),
             url: folderPreviewUrl(item.path, 256),
             active: item.path === state.folderImage,
             edited: Boolean(state.folderState.edits[item.path]),
+            tooltip: item.relative_path,
             onSelect: (card) => {
               state.folderImage = item.path;
               selectVisibleCard(folderList, card);
@@ -668,17 +839,34 @@ function buildManager(node) {
     }
 
     const total = folderResponse?.total || 0;
+    const partial = Boolean(folderResponse?.truncated);
     folderCount.textContent = folderLoading
       ? tr("读取中", "Loading")
-      : folderResponse?.truncated
-        ? tr(`${total}+ 张`, `${total}+ images`)
+      : partial
+        ? tr(`${total}+ 张 · 部分结果`, `${total}+ images · partial`)
         : tr(`${total} 张`, `${total} images`);
+    folderCount.title = partial
+      ? tr(
+          `扫描达到安全限制：${scanLimitText(folderResponse?.limit_reasons)}`,
+          `Scan safety limit reached: ${scanLimitText(folderResponse?.limit_reasons)}`,
+        )
+      : "";
     const page = folderResponse?.page ?? state.folderState.page;
     const pageCount = folderResponse?.page_count || 1;
     folderPageText.textContent = `${page + 1} / ${pageCount}`;
     folderPrevBtn.disabled = folderLoading || page <= 0;
     folderNextBtn.disabled = folderLoading || page >= pageCount - 1;
     refreshFolderBtn.disabled = folderLoading || !state.folderPath;
+    const scannedDirectories = folderResponse?.scanned_directories || 0;
+    const scanSeconds = Number(folderResponse?.scan_seconds || 0).toFixed(1);
+    folderScanText.textContent = folderLoading
+      ? ""
+      : state.folderState.recursive && folderResponse
+        ? tr(`${scannedDirectories} 个目录 · ${scanSeconds} 秒`, `${scannedDirectories} folders · ${scanSeconds}s`)
+        : partial
+          ? tr("结果不完整", "Partial results")
+          : "";
+    folderScanText.classList.toggle("rim-scan-warning", partial);
   }
 
   function render(shouldPersist = false) {
@@ -733,6 +921,9 @@ function buildManager(node) {
           page: state.folderState.page,
           page_size: FOLDER_PAGE_SIZE,
           query: state.folderState.query,
+          recursive: state.folderState.recursive,
+          max_depth: state.folderState.maxDepth,
+          sort_by: state.folderState.sortBy,
           refresh,
         }),
       });
@@ -1082,6 +1273,49 @@ function buildManager(node) {
     } finally {
       chooseFolderBtn.disabled = false;
     }
+  };
+  parentFolderBtn.onclick = () => {
+    const parent = folderResponse?.parent_folder;
+    if (parent && parent !== state.folderPath) applyFolderPath(parent);
+  };
+  childFolderSelect.onchange = () => {
+    const path = childFolderSelect.value;
+    if (path) applyFolderPath(path);
+  };
+  currentFolderBtn.onclick = () => {
+    if (!state.folderState.recursive) return;
+    state.folderState.recursive = false;
+    state.folderState.page = 0;
+    folderResponse = null;
+    folderList.scrollTop = 0;
+    persist();
+    requestFolderPage(false);
+  };
+  recursiveFolderBtn.onclick = () => {
+    if (state.folderState.recursive) return;
+    state.folderState.recursive = true;
+    state.folderState.page = 0;
+    folderResponse = null;
+    folderList.scrollTop = 0;
+    persist();
+    requestFolderPage(false);
+  };
+  depthSelect.onchange = () => {
+    state.folderState.maxDepth = Number.parseInt(depthSelect.value, 10) || 8;
+    state.folderState.page = 0;
+    folderResponse = null;
+    folderList.scrollTop = 0;
+    persist();
+    requestFolderPage(false);
+  };
+  sortSelect.onchange = () => {
+    state.folderState.sortBy = FOLDER_SORT_OPTIONS.has(sortSelect.value)
+      ? sortSelect.value
+      : "name_asc";
+    state.folderState.page = 0;
+    folderList.scrollTop = 0;
+    persist();
+    requestFolderPage(false);
   };
   refreshFolderBtn.onclick = () => requestFolderPage(true);
   folderSearch.oninput = () => {
