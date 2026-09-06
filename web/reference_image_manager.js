@@ -149,8 +149,9 @@ function viewUrlFromAnnotated(value, preview = true) {
   return viewUrlFromRef(parseAnnotatedImage(value), preview);
 }
 
-function folderPreviewUrl(path, size = 256) {
-  const params = new URLSearchParams({ path: String(path || ""), size: String(size) });
+function folderPreviewUrl(fileId, size = 256) {
+  if (!fileId) return "";
+  const params = new URLSearchParams({ id: String(fileId), size: String(size) });
   return api.apiURL(`${ROUTE_PREFIX}/folder/preview?${params.toString()}`);
 }
 
@@ -193,6 +194,8 @@ function cleanFolderState(value) {
     recursive: Boolean(parsed.recursive),
     maxDepth,
     sortBy: FOLDER_SORT_OPTIONS.has(parsed.sortBy) ? parsed.sortBy : "name_asc",
+    grant: String(parsed.grant || ""),
+    selectedFileId: String(parsed.selectedFileId || ""),
     edits: { ...edits },
   };
 }
@@ -383,7 +386,10 @@ function buildManager(node) {
   const parentFolderBtn = makeEl("button", "rim-icon-btn", "↑");
   parentFolderBtn.title = tr("打开上一级文件夹", "Open parent folder");
   const folderPathInput = document.createElement("input");
-  folderPathInput.placeholder = tr("输入或选择图片文件夹", "Enter or choose an image folder");
+  folderPathInput.placeholder = tr(
+    "选择文件夹后可输入内部路径",
+    "Choose a folder, then enter a path inside it",
+  );
   const applyPathBtn = makeEl("button", "rim-btn", tr("打开", "Open"));
   const chooseFolderBtn = makeEl("button", "rim-btn rim-btn-primary", tr("选择文件夹", "Choose Folder"));
   const refreshFolderBtn = makeEl("button", "rim-icon-btn", "↻");
@@ -506,7 +512,7 @@ function buildManager(node) {
     const annotated = currentAnnotatedImage();
     if (annotated) return viewUrlFromAnnotated(annotated);
     if (state.mode === "folder" && state.folderImage) {
-      return folderPreviewUrl(state.folderImage, size);
+      return folderPreviewUrl(state.folderState.selectedFileId, size);
     }
     return "";
   }
@@ -822,12 +828,13 @@ function buildManager(node) {
           makeCard({
             name: item.name,
             meta: folderItemMeta(item),
-            url: folderPreviewUrl(item.path, 256),
+            url: folderPreviewUrl(item.file_id, 256),
             active: item.path === state.folderImage,
             edited: Boolean(state.folderState.edits[item.path]),
             tooltip: item.relative_path,
             onSelect: (card) => {
               state.folderImage = item.path;
+              state.folderState.selectedFileId = item.file_id || "";
               selectVisibleCard(folderList, card);
             },
           }),
@@ -906,7 +913,7 @@ function buildManager(node) {
       folderResponse = null;
       folderError = "";
       render();
-      return;
+      return true;
     }
     const requestId = ++folderRequest;
     folderLoading = true;
@@ -917,7 +924,9 @@ function buildManager(node) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          grant: state.folderState.grant,
           path: state.folderPath,
+          selected_path: state.folderImage,
           page: state.folderState.page,
           page_size: FOLDER_PAGE_SIZE,
           query: state.folderState.query,
@@ -927,16 +936,21 @@ function buildManager(node) {
           refresh,
         }),
       });
-      if (requestId !== folderRequest) return;
+      if (requestId !== folderRequest) return false;
       folderResponse = result;
       state.folderPath = result.folder || state.folderPath;
       state.folderState.page = result.page || 0;
+      const selected = result.items?.find((item) => item.path === state.folderImage);
+      state.folderState.selectedFileId =
+        result.selected_file_id || selected?.file_id || state.folderState.selectedFileId;
       folderError = "";
       persist();
+      return true;
     } catch (error) {
-      if (requestId !== folderRequest) return;
+      if (requestId !== folderRequest) return false;
       folderResponse = null;
       folderError = error instanceof Error ? error.message : String(error);
+      return false;
     } finally {
       if (requestId === folderRequest) {
         folderLoading = false;
@@ -945,17 +959,40 @@ function buildManager(node) {
     }
   }
 
-  async function applyFolderPath(path) {
+  async function applyFolderPath(path, grant = state.folderState.grant) {
     const normalized = String(path || "").trim();
     if (!normalized) return;
-    if (normalized !== state.folderPath) {
+    const previous = {
+      path: state.folderPath,
+      image: state.folderImage,
+      grant: state.folderState.grant,
+      selectedFileId: state.folderState.selectedFileId,
+      page: state.folderState.page,
+    };
+    const pathChanged = normalized !== state.folderPath;
+    const grantChanged = grant !== state.folderState.grant;
+    state.folderState.grant = grant;
+    if (pathChanged) {
       state.folderPath = normalized;
       state.folderImage = "";
+      state.folderState.selectedFileId = "";
       state.folderState.page = 0;
       folderResponse = null;
+    } else if (grantChanged) {
+      state.folderState.selectedFileId = "";
     }
     persist();
-    await requestFolderPage(false);
+    const loaded = await requestFolderPage(false);
+    if (loaded || (!pathChanged && !grantChanged)) return;
+
+    state.folderPath = previous.path;
+    state.folderImage = previous.image;
+    state.folderState.grant = previous.grant;
+    state.folderState.selectedFileId = previous.selectedFileId;
+    state.folderState.page = previous.page;
+    folderPathInput.value = previous.path;
+    persist();
+    render();
   }
 
   async function uploadFiles(files, replaceCurrent = false) {
@@ -1008,7 +1045,7 @@ function buildManager(node) {
       const imported = await fetchJson(`${ROUTE_PREFIX}/folder/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: state.folderImage }),
+        body: JSON.stringify({ file_id: state.folderState.selectedFileId }),
       });
       const image = annotatedImageName(imported);
       let item = state.items.find(
@@ -1115,7 +1152,7 @@ function buildManager(node) {
         const imported = await fetchJson(`${ROUTE_PREFIX}/folder/import`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: context.folderImage }),
+          body: JSON.stringify({ file_id: state.folderState.selectedFileId }),
         });
         context.editorInput = imported.image;
       }
@@ -1266,7 +1303,9 @@ function buildManager(node) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ initial_path: state.folderPath }),
       });
-      if (result.path) await applyFolderPath(result.path);
+      if (result.path && result.grant) {
+        await applyFolderPath(result.path, result.grant);
+      }
     } catch (error) {
       folderError = error instanceof Error ? error.message : String(error);
       renderFolder();

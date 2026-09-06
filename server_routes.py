@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import os
-import platform
 import shutil
-import subprocess
+import threading
 from pathlib import Path
 
 from aiohttp import web
@@ -13,81 +13,86 @@ from aiohttp import web
 import folder_paths
 from server import PromptServer
 
-from .folder_browser import DirectoryIndexCache, ThumbnailCache, resolve_image_path
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+except ImportError:
+    tk = None
+    filedialog = None
+
+TK_ERRORS = (tk.TclError,) if tk is not None else ()
+
+from .folder_access import FOLDER_GRANTS, FolderAccessDenied, FolderGrantStore
+from .folder_browser import (
+    DirectoryIndexCache,
+    ThumbnailCache,
+    normalize_folder,
+    resolve_image_path,
+)
 
 
 ROUTE_PREFIX = "/advanced-image-loader"
 DIRECTORY_CACHE = DirectoryIndexCache()
 THUMBNAIL_CACHE = ThumbnailCache()
+PICKER_LOCK = threading.Lock()
+
+
+def _require_local_request(request: web.Request) -> None:
+    transport = request.transport
+    peer = transport.get_extra_info("peername") if transport else None
+    host = peer[0] if isinstance(peer, (tuple, list)) and peer else ""
+    try:
+        address = ipaddress.ip_address(str(host).split("%", 1)[0])
+    except ValueError as error:
+        raise FolderAccessDenied(
+            "External folder access is available only from this computer."
+        ) from error
+    if address.version == 6 and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    if not address.is_loopback:
+        raise FolderAccessDenied(
+            "External folder access is available only from this computer."
+        )
 
 
 def _pick_folder(initial_path: str = "") -> str:
     initial_path = initial_path if os.path.isdir(initial_path) else str(Path.home())
-    system = platform.system()
+    if not PICKER_LOCK.acquire(blocking=False):
+        raise RuntimeError("A folder picker is already open.")
 
-    if system == "Windows":
-        script = r"""
-Add-Type -AssemblyName System.Windows.Forms
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = 'Select an image folder'
-$dialog.ShowNewFolderButton = $false
-if (Test-Path -LiteralPath $env:AIL_INITIAL_DIR) {
-    $dialog.SelectedPath = $env:AIL_INITIAL_DIR
-}
-if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    Write-Output $dialog.SelectedPath
-}
-"""
-        env = os.environ.copy()
-        env["AIL_INITIAL_DIR"] = initial_path
-        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-STA", "-Command", script],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,
-            creationflags=creation_flags,
-            timeout=300,
-            check=False,
+    root = None
+    try:
+        if tk is None or filedialog is None:
+            raise RuntimeError(
+                "The Python Tk folder picker is unavailable on this installation."
+            )
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        selected = filedialog.askdirectory(
+            parent=root,
+            title="Select an image folder",
+            initialdir=initial_path,
+            mustexist=True,
         )
-    elif system == "Darwin":
-        result = subprocess.run(
-            [
-                "osascript",
-                "-e",
-                'POSIX path of (choose folder with prompt "Select an image folder")',
-            ],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-    else:
-        picker = shutil.which("zenity") or shutil.which("kdialog")
-        if not picker:
-            raise RuntimeError("No native folder picker is available. Enter the path manually.")
-        args = [picker, "--file-selection", "--directory", f"--filename={initial_path}/"]
-        if Path(picker).name == "kdialog":
-            args = [picker, "--getexistingdirectory", initial_path]
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-
-    if result.returncode != 0:
-        return ""
-    selected = result.stdout.strip()
-    return os.path.abspath(selected) if selected else ""
+        return normalize_folder(selected) if selected else ""
+    except TK_ERRORS as error:
+        raise RuntimeError(f"Unable to open the folder picker: {error}") from error
+    finally:
+        if root is not None:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+        PICKER_LOCK.release()
 
 
-def _import_to_input(source_path: str) -> dict[str, str]:
-    source = resolve_image_path(source_path)
+def _import_to_input(source_path: str, root: str) -> dict[str, str]:
+    source = resolve_image_path(source_path, root)
     input_directory = os.path.abspath(folder_paths.get_input_directory())
     try:
         common = os.path.commonpath(
@@ -128,15 +133,25 @@ def _import_to_input(source_path: str) -> dict[str, str]:
 
 
 def register_routes() -> None:
+    FOLDER_GRANTS.configure_storage(
+        Path(folder_paths.get_user_directory())
+        / "advanced-image-loader"
+        / "folder-grants.json"
+    )
     routes = PromptServer.instance.routes
 
     @routes.post(f"{ROUTE_PREFIX}/folder/list")
     async def list_folder(request: web.Request) -> web.Response:
         try:
+            _require_local_request(request)
             payload = await request.json()
+            grant = str(payload.get("grant", ""))
+            root, folder = FOLDER_GRANTS.resolve_folder(
+                grant, str(payload.get("path", ""))
+            )
             result = await asyncio.to_thread(
                 DIRECTORY_CACHE.list_page,
-                payload.get("path", ""),
+                folder,
                 payload.get("page", 0),
                 payload.get("page_size", 48),
                 payload.get("query", ""),
@@ -144,17 +159,32 @@ def register_routes() -> None:
                 payload.get("max_depth", 8),
                 payload.get("sort_by", "name_asc"),
                 bool(payload.get("refresh", False)),
+                root,
             )
+            for item in result["items"]:
+                item["file_id"] = FOLDER_GRANTS.issue_file(grant, item["path"])
+            selected_path = str(payload.get("selected_path", ""))
+            if selected_path:
+                result["selected_file_id"] = FOLDER_GRANTS.issue_file(
+                    grant, selected_path
+                )
             return web.json_response(result)
+        except FolderAccessDenied as error:
+            return web.json_response({"error": str(error)}, status=403)
         except (OSError, ValueError) as error:
             return web.json_response({"error": str(error)}, status=400)
 
     @routes.get(f"{ROUTE_PREFIX}/folder/preview")
     async def preview_folder_image(request: web.Request) -> web.Response:
         try:
+            _require_local_request(request)
+            path, root = FOLDER_GRANTS.resolve_file(
+                request.query.get("id", "")
+            )
             data, content_type, etag = await asyncio.to_thread(
                 THUMBNAIL_CACHE.get,
-                request.query.get("path", ""),
+                path,
+                root,
                 request.query.get("size", 256),
             )
             if request.headers.get("If-None-Match") == etag:
@@ -167,27 +197,41 @@ def register_routes() -> None:
                     "Cache-Control": "private, max-age=3600",
                 },
             )
+        except FolderAccessDenied as error:
+            return web.json_response({"error": str(error)}, status=403)
         except (OSError, ValueError) as error:
             return web.json_response({"error": str(error)}, status=404)
 
     @routes.post(f"{ROUTE_PREFIX}/folder/pick")
     async def pick_folder(request: web.Request) -> web.Response:
         try:
+            _require_local_request(request)
             payload = await request.json()
             selected = await asyncio.to_thread(
                 _pick_folder, str(payload.get("initial_path", ""))
             )
-            return web.json_response({"path": selected})
-        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+            if not selected:
+                return web.json_response({"path": "", "grant": ""})
+            grant, selected = FOLDER_GRANTS.authorize(selected)
+            return web.json_response({"path": selected, "grant": grant})
+        except FolderAccessDenied as error:
+            return web.json_response({"error": str(error)}, status=403)
+        except (OSError, RuntimeError, ValueError) as error:
             return web.json_response({"error": str(error)}, status=500)
 
     @routes.post(f"{ROUTE_PREFIX}/folder/import")
     async def import_folder_image(request: web.Request) -> web.Response:
         try:
+            _require_local_request(request)
             payload = await request.json()
+            path, root = FOLDER_GRANTS.resolve_file(
+                str(payload.get("file_id", ""))
+            )
             result = await asyncio.to_thread(
-                _import_to_input, str(payload.get("path", ""))
+                _import_to_input, path, root
             )
             return web.json_response(result)
+        except FolderAccessDenied as error:
+            return web.json_response({"error": str(error)}, status=403)
         except (OSError, ValueError) as error:
             return web.json_response({"error": str(error)}, status=400)

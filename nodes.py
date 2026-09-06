@@ -10,7 +10,8 @@ from PIL import Image, ImageOps, ImageSequence
 import folder_paths
 import node_helpers
 
-from .folder_browser import resolve_image_path
+from .folder_access import FOLDER_GRANTS, FolderAccessDenied
+from .folder_browser import resolve_folder_path, resolve_image_path
 
 
 MODE_LIBRARY = "library"
@@ -42,7 +43,17 @@ def _resolve_selected_path(
                     return folder_paths.get_annotated_filepath(edited_image)
             except (OSError, ValueError):
                 pass
-        return resolve_image_path(folder_image, folder_path)
+        try:
+            authorized_image, authorized_root = FOLDER_GRANTS.resolve_file(
+                str(state.get("selectedFileId", ""))
+            )
+        except FolderAccessDenied as error:
+            raise ValueError(str(error)) from error
+        resolve_folder_path(folder_path, authorized_root)
+        selected_image = resolve_image_path(folder_image, folder_path)
+        if os.path.normcase(authorized_image) != os.path.normcase(selected_image):
+            raise ValueError("The selected image does not match its folder permission.")
+        return authorized_image
 
     if not image:
         raise ValueError("No image is selected / 未选择图片。")

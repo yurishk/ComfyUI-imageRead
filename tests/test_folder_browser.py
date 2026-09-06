@@ -71,6 +71,21 @@ class DirectoryIndexCacheTests(unittest.TestCase):
         )
         self.assertEqual(recursive["scanned_directories"], 3)
 
+    def test_authorized_root_prevents_parent_navigation(self):
+        child = self.root / "child"
+        child.mkdir()
+        Image.new("RGB", (8, 8), "blue").save(child / "nested.png")
+
+        root_page = self.cache.list_page(str(self.root), root=str(self.root))
+        child_page = self.cache.list_page(str(child), root=str(self.root))
+
+        self.assertEqual(root_page["parent_folder"], "")
+        self.assertEqual(child_page["parent_folder"], str(self.root.resolve()))
+
+        with tempfile.TemporaryDirectory() as outside:
+            with self.assertRaisesRegex(ValueError, "outside"):
+                self.cache.list_page(outside, root=str(self.root))
+
     def test_recursive_depth_is_bounded_and_reported(self):
         deep = self.root / "one" / "two"
         deep.mkdir(parents=True)
@@ -115,8 +130,8 @@ class ThumbnailCacheTests(unittest.TestCase):
             Image.new("RGBA", (512, 256), (255, 0, 0, 128)).save(image_path)
             cache = ThumbnailCache(max_bytes=1024 * 1024)
 
-            first = cache.get(str(image_path), 128)
-            second = cache.get(str(image_path), 128)
+            first = cache.get(str(image_path), directory, 128)
+            second = cache.get(str(image_path), directory, 128)
 
             self.assertEqual(first[1], "image/png")
             self.assertEqual(first[0], second[0])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import types
@@ -61,9 +62,51 @@ class ImageLoaderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "selected.png"
             Image.new("RGB", (4, 4), "white").save(path)
+            grant, _ = nodes.FOLDER_GRANTS.authorize(directory)
+            file_id = nodes.FOLDER_GRANTS.issue_file(grant, str(path))
             selected = nodes._resolve_selected_path(
-                "", "folder", directory, str(path), "{}"
+                "",
+                "folder",
+                directory,
+                str(path),
+                json.dumps({"grant": grant, "selectedFileId": file_id}),
             )
+            self.assertEqual(selected, str(path))
+
+    def test_folder_mode_rejects_an_unapproved_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "selected.png"
+            Image.new("RGB", (4, 4), "white").save(path)
+
+            with self.assertRaisesRegex(ValueError, "permission"):
+                nodes._resolve_selected_path(
+                    "", "folder", directory, str(path), "{}"
+                )
+
+    def test_folder_mode_survives_a_grant_store_reload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "selected.png"
+            storage = Path(directory) / "state" / "folder-grants.json"
+            Image.new("RGB", (4, 4), "white").save(path)
+            first_store = nodes.FOLDER_GRANTS.__class__(storage_path=storage)
+            grant, _ = first_store.authorize(directory)
+            reloaded_store = nodes.FOLDER_GRANTS.__class__(storage_path=storage)
+            renewed_file_id = reloaded_store.issue_file(grant, str(path))
+            original_store = nodes.FOLDER_GRANTS
+            nodes.FOLDER_GRANTS = reloaded_store
+            try:
+                selected = nodes._resolve_selected_path(
+                    "",
+                    "folder",
+                    directory,
+                    str(path),
+                    json.dumps(
+                        {"grant": grant, "selectedFileId": renewed_file_id}
+                    ),
+                )
+            finally:
+                nodes.FOLDER_GRANTS = original_store
+
             self.assertEqual(selected, str(path))
 
 

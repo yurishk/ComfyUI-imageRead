@@ -65,7 +65,7 @@ def normalize_folder(folder: str) -> str:
     if not isinstance(folder, str) or not folder.strip():
         raise ValueError("Folder path is empty.")
 
-    path = os.path.abspath(os.path.expanduser(folder.strip()))
+    path = os.path.realpath(os.path.abspath(os.path.expanduser(folder.strip())))
     if not os.path.isdir(path):
         raise ValueError(f"Folder does not exist: {path}")
     return path
@@ -75,20 +75,33 @@ def is_supported_image(path: str | os.PathLike[str]) -> bool:
     return Path(path).suffix.casefold() in IMAGE_EXTENSIONS
 
 
+def path_is_within(path: str, root: str) -> bool:
+    """Return whether a canonical path is contained by a canonical root."""
+    try:
+        common = os.path.commonpath(
+            [os.path.normcase(root), os.path.normcase(path)]
+        )
+    except ValueError:
+        return False
+    return common == os.path.normcase(root)
+
+
+def resolve_folder_path(folder: str, root: str) -> str:
+    resolved_root = normalize_folder(root)
+    resolved = normalize_folder(folder)
+    if not path_is_within(resolved, resolved_root):
+        raise ValueError("The folder is outside the authorized folder.")
+    return resolved
+
+
 def resolve_image_path(path: str, root: str | None = None) -> str:
     if not isinstance(path, str) or not path.strip():
         raise ValueError("Image path is empty.")
 
-    resolved = os.path.abspath(os.path.expanduser(path.strip()))
+    resolved = os.path.realpath(os.path.abspath(os.path.expanduser(path.strip())))
     if root:
         resolved_root = normalize_folder(root)
-        try:
-            common = os.path.commonpath(
-                [os.path.normcase(resolved_root), os.path.normcase(resolved)]
-            )
-        except ValueError as error:
-            raise ValueError("The image is outside the selected folder.") from error
-        if common != os.path.normcase(resolved_root):
+        if not path_is_within(resolved, resolved_root):
             raise ValueError("The image is outside the selected folder.")
 
     if not os.path.isfile(resolved):
@@ -255,8 +268,9 @@ class DirectoryIndexCache:
         recursive: bool = False,
         max_depth: int = DEFAULT_RECURSIVE_DEPTH,
         refresh: bool = False,
+        root: str | None = None,
     ) -> tuple[str, DirectoryIndex, bool]:
-        normalized = normalize_folder(folder)
+        normalized = resolve_folder_path(folder, root) if root else normalize_folder(folder)
         max_depth = max(1, min(int(max_depth), MAX_RECURSIVE_DEPTH))
         cache_key = (os.path.normcase(normalized), bool(recursive), max_depth)
         now = time.monotonic()
@@ -316,12 +330,14 @@ class DirectoryIndexCache:
         max_depth: int = DEFAULT_RECURSIVE_DEPTH,
         sort_by: str = "name_asc",
         refresh: bool = False,
+        root: str | None = None,
     ) -> dict[str, object]:
         normalized, index, cached = self.get_index(
             folder,
             recursive=recursive,
             max_depth=max_depth,
             refresh=refresh,
+            root=root,
         )
         page_size = max(1, min(int(page_size), MAX_PAGE_SIZE))
         query_folded = str(query or "").strip().casefold()
@@ -373,9 +389,17 @@ class DirectoryIndexCache:
             for item in selected_entries
         ]
 
+        parent_folder = os.path.dirname(normalized)
+        if root:
+            resolved_root = normalize_folder(root)
+            if normalized == resolved_root or not path_is_within(
+                parent_folder, resolved_root
+            ):
+                parent_folder = ""
+
         return {
             "folder": normalized,
-            "parent_folder": os.path.dirname(normalized),
+            "parent_folder": parent_folder,
             "folders": [
                 {"name": item.name, "path": item.path} for item in index.folders
             ],
@@ -428,8 +452,8 @@ class ThumbnailCache:
                 content_type = "image/jpeg"
             return output.getvalue(), content_type
 
-    def get(self, path: str, size: int = 256) -> tuple[bytes, str, str]:
-        resolved = resolve_image_path(path)
+    def get(self, path: str, root: str, size: int = 256) -> tuple[bytes, str, str]:
+        resolved = resolve_image_path(path, root)
         size = max(96, min(int(size), 1400))
         stat = os.stat(resolved)
         key = (os.path.normcase(resolved), size, stat.st_mtime_ns, stat.st_size)
